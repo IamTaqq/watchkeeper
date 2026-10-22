@@ -52,12 +52,16 @@ git pull
 
 完了すると、URLやダッシュボードのアドレスが表示されます。
 
-オプションは環境変数で渡します。
+設定は `~/.watchkeeper.env` に書いておくと、次回以降のデプロイでも引き継がれます。
 
 ```bash
-ALERT_EMAIL=you@example.com ./scripts/cloudshell.sh deploy   # 予算アラートとメール通知を有効にする
-ENABLE_TRIAGE=true ./scripts/cloudshell.sh deploy           # AIの調査を有効にする(APIキーの登録が先)
+echo ENABLE_TRIAGE=true >> ~/.watchkeeper.env               # AIの調査を有効にする(APIキーの登録が先)
+echo ALERT_EMAIL=you@example.com >> ~/.watchkeeper.env      # 予算アラートとメール通知を有効にする
+cat ~/.watchkeeper.env                                      # 今の設定を確認
 ```
+
+その場だけ変えたい場合は、`ENABLE_TRIAGE=false ./scripts/cloudshell.sh deploy` のようにコマンドの前に書きます。
+デプロイの最初に `Settings: demo=... triage=...` と、使われる設定が表示されます。
 
 > メールアドレスを設定すると AWS Budgets(予算アラート)も作られます。
 > アカウントのルールで止められた場合は、エラーを見せてください。

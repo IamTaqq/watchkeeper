@@ -22,6 +22,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 export PATH="$HOME/.local/bin:$PATH"
 export AWS_REGION="$REGION"
 
+# Persistent settings (survive new CloudShell sessions), e.g.
+#   echo ENABLE_TRIAGE=true >> ~/.watchkeeper.env
+# Values given on the command line still win: ENABLE_TRIAGE=false ./scripts/cloudshell.sh deploy
+SETTINGS="$HOME/.watchkeeper.env"
+if [ -f "$SETTINGS" ]; then
+  for key in ALERT_EMAIL ENABLE_DEMO ENABLE_TRIAGE; do
+    if [ -z "${!key:-}" ]; then
+      value="$(grep -E "^${key}=" "$SETTINGS" | tail -1 | cut -d= -f2- || true)"
+      [ -n "$value" ] && export "$key=$value"
+    fi
+  done
+fi
+
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
@@ -101,6 +114,7 @@ tf_init() {
 cmd_deploy() {
   build
   tf_init
+  say "Settings: demo=${TF_VAR_enable_demo} triage=${TF_VAR_enable_triage} alert_email=${TF_VAR_alert_email:-(none)}"
   say "Planning (nothing changes yet)..."
   (cd "$ROOT/terraform" && terraform plan -input=false -out=tfplan)
   read -r -p $'\nApply this plan? Type yes to continue: ' answer
