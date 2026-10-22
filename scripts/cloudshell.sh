@@ -80,11 +80,16 @@ tf_init() {
   bucket="$(stack_output StateBucketName)"
   [ -n "$bucket" ] && [ "$bucket" != "None" ] || die "run './scripts/cloudshell.sh bootstrap' first"
   export TF_IN_AUTOMATION=1
+  # The AWS provider is ~850 MB unzipped, but CloudShell's persistent home is 1 GB.
+  # Keep Terraform's working data in /tmp (re-downloaded in a new session, which is fine).
+  export TF_DATA_DIR="${TF_DATA_DIR:-/tmp/${PROJECT}-terraform}"
+  rm -rf "$ROOT/terraform/.terraform"
   export TF_VAR_aws_region="$REGION"
   export TF_VAR_permissions_boundary_name="${PROJECT}-lambda-boundary"
   export TF_VAR_alert_email="${ALERT_EMAIL:-}"
   export TF_VAR_enable_demo="${ENABLE_DEMO:-true}"
   export TF_VAR_enable_triage="${ENABLE_TRIAGE:-false}"
+  say "Preparing Terraform (first run downloads the AWS provider, about 1-2 minutes)..."
   (cd "$ROOT/terraform" && terraform init -input=false -reconfigure \
     -backend-config="bucket=${bucket}" \
     -backend-config="key=${PROJECT}/terraform.tfstate" \
