@@ -10,3 +10,4 @@ terraform/*.tfstate.*
 terraform/terraform.tfvars
 terraform/.terraform.tfstate.lock.info
 terraform/backend.hcl
+terraform/.terraform.lock.hcl
