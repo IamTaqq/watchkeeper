@@ -72,6 +72,13 @@ def _http(raw: dict, name: str) -> dict:
         params["max_latency_ms"] = _positive_int(raw["max_latency_ms"], "max_latency_ms", name)
     if "contains" in raw:
         params["contains"] = str(raw["contains"])
+    if "bearer_token_parameter" in raw:
+        token_parameter = str(raw["bearer_token_parameter"])
+        if not token_parameter.startswith("/"):
+            raise ConfigError(f"check '{name}': 'bearer_token_parameter' must be an SSM name starting with '/'")
+        params["bearer_token_parameter"] = token_parameter
+    if raw.get("include_body_on_failure"):
+        params["include_body_on_failure"] = True
     return params
 
 

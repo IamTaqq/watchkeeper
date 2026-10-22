@@ -4,7 +4,7 @@ import pytest
 
 from conftest import ok_response
 from watchkeeper.checks import parse_timestamp, run_check
-from watchkeeper.config import parse_checks
+from watchkeeper.config import ConfigError, parse_checks
 
 
 def one(**item):
@@ -165,3 +165,37 @@ def test_check_every_seconds_is_validated():
     with pytest.raises(Exception, match="zero or a positive integer"):
         one(name="a", type="anthropic_api_key", check_every_seconds=-1)
     assert one(name="a", type="anthropic_api_key").check_every_seconds == 0
+
+
+class TestHttpWithToken:
+    URL = "https://app.example.com/api/health"
+
+    def _check(self, **extra):
+        raw = {"name": "deps", "type": "http", "url": self.URL, **extra}
+        return parse_checks({"checks": [raw]})[0]
+
+    def test_sends_bearer_token_from_ssm(self, world):
+        world.secrets["/x/token"] = "s3cret"
+        world.responses[self.URL] = ok_response()
+        result = run_check(self._check(bearer_token_parameter="/x/token"), world.context())
+        assert result.ok
+        assert world.last_headers == {"Authorization": "Bearer s3cret"}
+        assert "s3cret" not in result.message
+
+    def test_no_token_sends_no_header(self, world):
+        world.responses[self.URL] = ok_response()
+        run_check(self._check(), world.context())
+        assert world.last_headers is None
+
+    def test_failure_body_included_only_when_enabled(self, world):
+        body = b'{"status": "degraded",\n "failing": ["stripe=auth_failed (HTTP 401)"]}'
+        world.responses[self.URL] = ok_response(body=body, status=503)
+        plain = run_check(self._check(), world.context())
+        detailed = run_check(self._check(include_body_on_failure=True), world.context())
+        assert plain.message == "HTTP 503 (expected 200)"
+        assert 'stripe=auth_failed (HTTP 401)' in detailed.message
+        assert "\n" not in detailed.message
+
+    def test_token_parameter_must_be_ssm_name(self):
+        with pytest.raises(ConfigError):
+            self._check(bearer_token_parameter="plain-token")

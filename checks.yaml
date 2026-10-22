@@ -4,15 +4,45 @@
 #
 # Common options for every check:
 #   name               lowercase letters, digits, hyphens (unique)
-#   type               http | heartbeat | http_json_freshness | postgres
+#   type               http | heartbeat | http_json_freshness | postgres | anthropic_api_key
 #   description        shown in the alert
 #   failure_threshold  consecutive failed runs before alerting (default 2)
+#   check_every_seconds  run less often than every minute; failures are always re-checked next minute
 #
 # After editing, run `make validate` and then `make deploy`.
 
-checks: []
+checks:
+  # --- TutorHub (tutorhubjp.com, Vercel + Supabase) ---------------------------
+  - name: tutorhub-site
+    type: http
+    url: https://tutorhubjp.com/
+    max_latency_ms: 4000
+    timeout_seconds: 10
+    failure_threshold: 3        # ride out a single slow cold start
+    description: TutorHub top page is reachable (Vercel)
 
-# --- Examples: change `checks: []` above to `checks:` and uncomment below ------
+  - name: tutorhub-api
+    type: http
+    url: https://tutorhubjp.com/api/health
+    contains: '"status":"ok"'
+    timeout_seconds: 10
+    failure_threshold: 3
+    description: TutorHub server functions respond (no external services touched)
+
+  # Are the API keys still accepted? /api/health, called with the token, makes one
+  # free read-only call per service (Supabase DB + public key, Claude API, Stripe)
+  # and reports only ok/auth_failed/unavailable/not_configured per service.
+  - name: tutorhub-dependencies
+    type: http
+    url: https://tutorhubjp.com/api/health
+    bearer_token_parameter: /watchkeeper/tutorhub_health_token
+    include_body_on_failure: true
+    timeout_seconds: 15
+    check_every_seconds: 3600
+    failure_threshold: 2
+    description: TutorHub API keys and services (Supabase, Claude API, Stripe) still work
+
+# --- More examples (uncomment and move above) ----------------------------------
 
 #  # Is the site up and fast enough?
 #  - name: my-site

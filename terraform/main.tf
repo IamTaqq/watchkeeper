@@ -75,6 +75,7 @@ locals {
   check_secret_parameters = distinct(concat(
     local.postgres_dsn_parameters,
     [for c in local.all_checks : try(c.key_parameter, "/watchkeeper/anthropic_api_key") if try(c.type, "") == "anthropic_api_key"],
+    [for c in local.all_checks : try(c.bearer_token_parameter, "") if try(c.bearer_token_parameter, "") != ""],
   ))
 }
 

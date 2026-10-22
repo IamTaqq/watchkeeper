@@ -126,7 +126,7 @@ run "unknown_type_fails" {
 run "nothing_to_monitor_fails" {
   command = plan
   variables {
-    checks_file = "../checks.yaml" # empty list
+    checks_file = "./tests/fixtures/empty.yaml"
     enable_demo = false
   }
   expect_failures = [aws_cloudwatch_dashboard.main]
@@ -172,5 +172,17 @@ run "triage_off_by_default" {
   assert {
     condition     = length(module.triage) == 0 && !contains(keys(aws_cloudwatch_metric_alarm.check), "ai-triage-api-key")
     error_message = "triage (and its key check) must be opt-in"
+  }
+}
+
+run "bearer_token_secret_is_readable" {
+  command = plan
+  variables {
+    checks_file = "../checks.yaml"
+    enable_demo = false
+  }
+  assert {
+    condition     = contains(local.check_secret_parameters, "/watchkeeper/tutorhub_health_token")
+    error_message = "the checker must be allowed to read tokens used by http checks"
   }
 }

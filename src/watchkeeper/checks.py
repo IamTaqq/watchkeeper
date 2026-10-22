@@ -50,11 +50,26 @@ def _truncate(text: str) -> str:
     return text if len(text) <= MAX_MESSAGE_LENGTH else text[: MAX_MESSAGE_LENGTH - 3] + "..."
 
 
+BODY_EXCERPT_LENGTH = 300
+
+
+def _body_excerpt(body: bytes) -> str:
+    text = " ".join(body.decode("utf-8", errors="replace").split())
+    return text if len(text) <= BODY_EXCERPT_LENGTH else text[: BODY_EXCERPT_LENGTH - 3] + "..."
+
+
 def check_http(check: Check, ctx: Context) -> CheckResult:
     p = check.params
-    resp = ctx.http_get(p["url"], p["timeout_seconds"])
+    headers = None
+    if "bearer_token_parameter" in p:
+        headers = {"Authorization": f"Bearer {ctx.get_secret(p['bearer_token_parameter'])}"}
+    resp = ctx.http_get(p["url"], p["timeout_seconds"], headers=headers)
     if resp.status != p["expected_status"]:
-        return CheckResult(check.name, False, f"HTTP {resp.status} (expected {p['expected_status']})", resp.elapsed_ms)
+        message = f"HTTP {resp.status} (expected {p['expected_status']})"
+        if p.get("include_body_on_failure") and resp.body:
+            # Only for endpoints designed to return secret-free diagnostics (e.g. a health route).
+            message += f": {_body_excerpt(resp.body)}"
+        return CheckResult(check.name, False, message, resp.elapsed_ms)
     if "max_latency_ms" in p and resp.elapsed_ms > p["max_latency_ms"]:
         return CheckResult(
             check.name, False, f"slow response: {resp.elapsed_ms:.0f} ms (limit {p['max_latency_ms']} ms)", resp.elapsed_ms
