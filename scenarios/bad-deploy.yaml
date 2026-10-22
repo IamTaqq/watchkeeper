@@ -1,0 +1,47 @@
+name: bad-deploy
+description: A deploy introduces an exception on /health. Clear timing match; rollback is the right first move.
+now: "2026-10-20T14:30:00Z"
+
+alarm:
+  check: demo-app-health
+  description: Practice app /health endpoint
+  reason: "Threshold Crossed: 2 datapoints [0.0, 0.0] were less than the threshold (1.0)."
+
+checks:
+  - {name: demo-app-health, type: http, ok: false, message: "HTTP 500 (expected 200)"}
+  - {name: demo-data-freshness, type: http_json_freshness, ok: true, message: "'last_updated' is 4s old"}
+  - {name: demo-cron, type: heartbeat, ok: true, message: "last heartbeat 120s ago"}
+
+history:
+  demo-app-health:
+    - {from: -120, to: -9, success: true, latency_ms: 140}
+    - {from: -8, to: 0, success: false, latency_ms: 38}
+
+logs:
+  demo-app:
+    - {every: 5, from: -120, to: -10, message: "INFO GET /health 200 12ms"}
+    - {at: -9.5, message: "INFO cold start: version dpl_105 (commit 3f2a1c)"}
+    - {at: -9.4, message: "INFO connecting with postgresql://app:hunter2@db.internal:5432/app"}
+    - {every: 1, from: -8, to: 0, message: "ERROR GET /health 500: KeyError: 'PRICE_TABLE' in load_prices (handlers/pricing.py:42)"}
+    - {at: -7.9, message: "ERROR Traceback: config.get_section('PRICE_TABLE') returned None after config loader refactor"}
+  demo-cron:
+    - {every: 5, from: -120, to: -2, message: "INFO demo job finished, reported ok"}
+
+heartbeats:
+  demo-cron: {status: ok, last_ping: -2, message: ""}
+
+changes:
+  - {at: -300, actor: github-actions, action: deploy, target: demo-app, deployment_id: dpl_104, details: "commit 9b1e07: add /status caching"}
+  - {at: -9.6, actor: github-actions, action: deploy, target: demo-app, deployment_id: dpl_105, details: "commit 3f2a1c: refactor config loading (author takumi@example.com)"}
+
+context:
+  jobs: [demo-cron]
+  schedules: [watchkeeper-demo-cron]
+  deployments: [dpl_104, dpl_103]   # earlier successful deploys that can be rolled back to
+  flags: [new-pricing-page]
+
+expected:
+  root_cause: ["deploy|dpl_105|3f2a1c|refactor", "PRICE_TABLE|KeyError|config"]
+  tier: action
+  action: rollback_deploy
+  params: {deployment_id: dpl_104}

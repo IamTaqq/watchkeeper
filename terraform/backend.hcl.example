@@ -1,0 +1,6 @@
+# Copy to backend.hcl (git-ignored) and fill in the bucket from the bootstrap stack outputs.
+bucket       = "watchkeeper-tfstate-123456789012-ca-central-1"
+key          = "watchkeeper/terraform.tfstate"
+region       = "ca-central-1"
+encrypt      = true
+use_lockfile = true

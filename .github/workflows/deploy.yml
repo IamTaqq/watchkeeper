@@ -1,0 +1,88 @@
+name: deploy
+
+# Push to main (or run manually) -> tests -> terraform plan -> apply.
+# Uses GitHub OIDC: no AWS keys are stored anywhere. The job only gets AWS
+# credentials inside the "aws" environment, which you can protect with a
+# required reviewer (Settings > Environments) for human approval of every deploy.
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "**.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - run: python scripts/validate_config.py checks.yaml
+      - uses: hashicorp/setup-terraform@v3
+      - working-directory: terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform test
+
+  deploy:
+    needs: test
+    if: vars.AWS_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    environment: aws
+    permissions:
+      contents: read
+      id-token: write # lets the job request an OIDC token for AWS
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ca-central-1' }}
+      TF_IN_AUTOMATION: "1"
+      TF_VAR_aws_region: ${{ vars.AWS_REGION || 'ca-central-1' }}
+      TF_VAR_alert_email: ${{ vars.ALERT_EMAIL }}
+      TF_VAR_enable_demo: ${{ vars.ENABLE_DEMO || 'true' }}
+      TF_VAR_enable_triage: ${{ vars.ENABLE_TRIAGE || 'false' }}
+      TF_VAR_triage_model: ${{ vars.TRIAGE_MODEL || 'claude-sonnet-5-5' }}
+      TF_VAR_permissions_boundary_name: watchkeeper-lambda-boundary
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: aws sts get-caller-identity --query Arn --output text
+      - run: make build PY=python
+      - working-directory: terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}" \
+            -backend-config="key=watchkeeper/terraform.tfstate" \
+            -backend-config="region=${AWS_REGION}" \
+            -backend-config="encrypt=true" \
+            -backend-config="use_lockfile=true"
+          terraform plan -input=false -out=tfplan
+          terraform apply -input=false tfplan
+      - name: Summary
+        working-directory: terraform
+        run: |
+          {
+            echo "### Deployed"
+            echo '```'
+            terraform output
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,7 @@
+-r requirements.txt
+pytest>=8
+pyyaml>=6
+boto3>=1.34
+moto[dynamodb,ssm,cloudwatch,logs,cloudtrail]>=5
+cfn-lint>=1
+actionlint-py>=1.7

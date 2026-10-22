@@ -1,0 +1,12 @@
+checks:
+  - name: site
+    type: http
+    url: https://example.com/
+  - name: nightly
+    type: heartbeat
+    interval_seconds: 86400
+    failure_threshold: 1
+  - name: stuck-jobs
+    type: postgres
+    dsn_parameter: /watchkeeper/dsn/app
+    query: select 0

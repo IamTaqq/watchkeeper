@@ -1,0 +1,78 @@
+name: ops
+
+# Run drills and checks against the deployed stack from GitHub, with an audit
+# trail of who ran what. Runs in the "aws-ops" environment (no reviewer needed).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do
+        type: choice
+        options: [status, fault, pause-cron, resume-cron, run-checker, test-alert]
+        default: status
+      mode:
+        description: Fault mode (for action=fault)
+        type: choice
+        options: [none, error, slow, stale, down, cron_fail]
+        default: none
+
+permissions:
+  contents: read
+
+jobs:
+  ops:
+    runs-on: ubuntu-latest
+    environment: aws-ops
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'ca-central-1' }}
+      P: watchkeeper
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: fault
+        if: inputs.action == 'fault'
+        run: aws ssm put-parameter --name "/$P/demo/fault_mode" --value "${{ inputs.mode }}" --overwrite >/dev/null && echo "fault mode = ${{ inputs.mode }}"
+
+      - name: pause-cron
+        if: inputs.action == 'pause-cron'
+        run: aws events disable-rule --name "$P-demo-cron" && echo paused
+
+      - name: resume-cron
+        if: inputs.action == 'resume-cron'
+        run: aws events enable-rule --name "$P-demo-cron" && echo resumed
+
+      - name: run-checker
+        if: inputs.action == 'run-checker'
+        run: |
+          aws lambda invoke --function-name "$P-checker" --cli-binary-format raw-in-base64-out \
+            --payload '{"source":"ops-workflow"}' out.json >/dev/null && cat out.json
+
+      - name: test-alert
+        if: inputs.action == 'test-alert'
+        run: |
+          TOPIC=$(aws sns list-topics --query "Topics[?ends_with(TopicArn, ':$P-alerts')].TopicArn" --output text)
+          MSG='{"AlarmName":"'$P'-test","AlarmDescription":"Test alert from the ops workflow","NewStateValue":"ALARM","OldStateValue":"OK","NewStateReason":"manual test","Trigger":{"Dimensions":[{"name":"Check","value":"test"}]}}'
+          aws sns publish --topic-arn "$TOPIC" --message "$MSG" >/dev/null && echo "test alert published to $TOPIC"
+
+      - name: status
+        if: always()
+        run: |
+          {
+            echo "### Alarms"
+            echo '```'
+            aws cloudwatch describe-alarms --alarm-name-prefix "$P-" \
+              --query 'MetricAlarms[].[AlarmName,StateValue,StateUpdatedTimestamp]' --output text
+            echo '```'
+            echo "### Fault mode / demo cron"
+            echo '```'
+            aws ssm get-parameter --name "/$P/demo/fault_mode" --query Parameter.Value --output text 2>/dev/null || echo "(demo disabled)"
+            aws events describe-rule --name "$P-demo-cron" --query State --output text 2>/dev/null || true
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

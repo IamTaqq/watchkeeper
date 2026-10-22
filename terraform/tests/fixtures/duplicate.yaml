@@ -1,0 +1,4 @@
+checks:
+  - name: demo-cron
+    type: heartbeat
+    interval_seconds: 60

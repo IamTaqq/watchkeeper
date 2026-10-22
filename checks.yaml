@@ -1,0 +1,53 @@
+# Your checks. Terraform creates one CloudWatch alarm per check.
+# The demo checks (demo-app-health, demo-data-freshness, demo-cron) are added
+# automatically while enable_demo = true, so this list can start empty.
+#
+# Common options for every check:
+#   name               lowercase letters, digits, hyphens (unique)
+#   type               http | heartbeat | http_json_freshness | postgres
+#   description        shown in the alert
+#   failure_threshold  consecutive failed runs before alerting (default 2)
+#
+# After editing, run `make validate` and then `make deploy`.
+
+checks: []
+
+# --- Examples: change `checks: []` above to `checks:` and uncomment below ------
+
+#  # Is the site up and fast enough?
+#  - name: my-site
+#    type: http
+#    url: https://example.com/
+#    expected_status: 200      # default 200
+#    max_latency_ms: 2000      # optional
+#    contains: "Welcome"       # optional: body must contain this text
+#    timeout_seconds: 10       # default 10
+#
+#  # Did the nightly job run? The job calls the heartbeat URL when it finishes:
+#  #   curl -fsS -X POST -H "Authorization: Bearer $TOKEN" "$HEARTBEAT_URL/ping/nightly-backup"
+#  # and on failure:
+#  #   curl -fsS -X POST -H "Authorization: Bearer $TOKEN" -d "disk full" "$HEARTBEAT_URL/ping/nightly-backup/fail"
+#  - name: nightly-backup
+#    type: heartbeat
+#    interval_seconds: 86400   # expected every 24h
+#    grace_seconds: 1800       # allowed lateness
+#    failure_threshold: 1
+#
+#  # Is the data still updating? Reads a timestamp field from a JSON endpoint.
+#  - name: api-data-freshness
+#    type: http_json_freshness
+#    url: https://api.example.com/status
+#    field: data.last_updated  # dot path; ISO-8601 or epoch seconds/ms
+#    max_age_seconds: 600
+#
+#  # Any SQL that returns ONE number; alert when it exceeds max_value.
+#  # Runs in a READ ONLY transaction. Store the DSN yourself as an SSM SecureString:
+#  #   aws ssm put-parameter --type SecureString --name /watchkeeper/dsn/app \
+#  #     --value 'postgresql://readonly_user:PASSWORD@host:5432/postgres?sslmode=require'
+#  - name: stuck-jobs
+#    type: postgres
+#    dsn_parameter: /watchkeeper/dsn/app
+#    query: >
+#      select count(*) from jobs
+#      where status = 'running' and updated_at < now() - interval '15 minutes'
+#    max_value: 0

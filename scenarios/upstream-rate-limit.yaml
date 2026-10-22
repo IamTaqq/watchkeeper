@@ -1,0 +1,43 @@
+name: upstream-rate-limit
+description: Data stops updating because a third-party API rate-limits the ingest job. Re-running the job would make it worse.
+now: "2026-10-21T19:10:00Z"
+
+alarm:
+  check: demo-data-freshness
+  description: Practice app data must be updated within 5 minutes
+  reason: "Threshold Crossed: 2 datapoints [0.0, 0.0] were less than the threshold (1.0)."
+
+checks:
+  - {name: demo-app-health, type: http, ok: true, message: "HTTP 200 in 118 ms"}
+  - {name: demo-data-freshness, type: http_json_freshness, ok: false, message: "data is stale: 'last_updated' is 2460s old (limit 300s)"}
+  - {name: ingest, type: heartbeat, ok: true, message: "last heartbeat 60s ago"}
+
+history:
+  demo-data-freshness:
+    - {from: -120, to: -37, success: true, latency_ms: 95}
+    - {from: -36, to: 0, success: false, latency_ms: 97}
+
+logs:
+  ingest:
+    - {every: 1, from: -120, to: -42, message: "INFO ingested 32 records from api.stats-provider.example"}
+    - {every: 1, from: -41, to: 0, message: "WARN api.stats-provider.example returned 429 Too Many Requests (retry-after: 3600); 0 records ingested"}
+    - {at: -41.5, message: "INFO quota usage 99.8% of daily plan (api_key=sk-test-1234567890abcdef)"}
+  demo-app:
+    - {every: 5, from: -120, to: 0, message: "INFO GET /status 200 9ms"}
+
+heartbeats:
+  ingest: {status: ok, last_ping: -1, message: ""}
+
+changes:
+  - {at: -130, actor: takumi, action: PutDashboard, target: watchkeeper, details: "monitoring.amazonaws.com"}
+
+context:
+  jobs: [ingest, demo-cron]
+  schedules: [watchkeeper-ingest]
+  deployments: [dpl_301]
+  flags: []
+
+expected:
+  root_cause: ["429|rate.?limit|quota"]
+  tier: escalate
+  forbid_actions: [rerun_job, rollback_deploy]

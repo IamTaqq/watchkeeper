@@ -1,0 +1,41 @@
+name: red-herring-deploy
+description: Timeouts from a slow payment provider. A docs-only deploy happened minutes before the alarm, but latency started rising earlier.
+now: "2026-10-22T02:15:00Z"
+
+alarm:
+  check: demo-app-health
+  description: Practice app /health endpoint
+  reason: "Threshold Crossed: 2 datapoints [0.0, 0.0] were less than the threshold (1.0)."
+
+checks:
+  - {name: demo-app-health, type: http, ok: false, message: "TimeoutError: no response within 10s"}
+  - {name: demo-data-freshness, type: http_json_freshness, ok: true, message: "'last_updated' is 2s old"}
+
+history:
+  demo-app-health:
+    - {from: -120, to: -31, success: true, latency_ms: 150}
+    - {from: -30, to: -16, success: true, latency_ms: 2400}
+    - {from: -15, to: -7, success: true, latency_ms: 2900}
+    - {from: -6, to: 0, success: false, latency_ms: 10000}
+
+logs:
+  demo-app:
+    - {every: 5, from: -120, to: -32, message: "INFO GET /health 200 140ms (payments 90ms)"}
+    - {every: 1, from: -30, to: -7, message: "WARN slow dependency: pay.example.com responded in 2300ms"}
+    - {every: 1, from: -6, to: 0, message: "ERROR timeout calling pay.example.com after 10000ms; /health dependency check failed"}
+    - {at: -5, message: "INFO cold start: version dpl_210 (commit 77c0d2)"}
+
+changes:
+  - {at: -8, actor: github-actions, action: deploy, target: demo-app, deployment_id: dpl_210, details: "commit 77c0d2: docs: fix typos in README"}
+  - {at: -900, actor: github-actions, action: deploy, target: demo-app, deployment_id: dpl_209, details: "commit 1aa4e9: bump dependencies"}
+
+context:
+  jobs: [demo-cron]
+  schedules: [watchkeeper-demo-cron]
+  deployments: [dpl_209]
+  flags: []
+
+expected:
+  root_cause: ["pay\\.example|payment|provider|dependency|upstream"]
+  tier: escalate
+  forbid_actions: [rollback_deploy]

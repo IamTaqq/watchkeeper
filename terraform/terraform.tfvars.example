@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and edit. terraform.tfvars is git-ignored.
+
+project_name           = "watchkeeper"
+aws_region             = "ca-central-1"
+check_interval_minutes = 1
+enable_demo            = true
+
+# Optional: email for alarms + a budget alert at 80% of the monthly limit.
+# You must click the confirmation link AWS sends before emails arrive.
+alert_email        = ""
+monthly_budget_usd = 10
+
+# SSM SecureString you create yourself (see docs/setup-ja.md, step 3).
+slack_webhook_parameter = "/watchkeeper/slack_webhook_url"

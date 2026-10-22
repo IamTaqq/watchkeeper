@@ -1,0 +1,166 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  One-time setup so GitHub Actions can deploy Watchkeeper without long-lived AWS keys:
+  GitHub OIDC provider, a deploy role limited to this repository's environments,
+  a permissions boundary for every role Terraform creates, and an S3 bucket for Terraform state.
+
+Parameters:
+  GitHubOwner:
+    Type: String
+    Default: IamTaqq
+  RepoName:
+    Type: String
+    Default: watchkeeper
+  ProjectName:
+    Type: String
+    Default: watchkeeper
+    Description: Must match the Terraform variable project_name.
+  CreateOidcProvider:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: Set to false if this account already has the token.actions.githubusercontent.com provider.
+
+Conditions:
+  MakeOidc: !Equals [!Ref CreateOidcProvider, "true"]
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Condition: MakeOidc
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList: [sts.amazonaws.com]
+
+  StateBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketName: !Sub "${ProjectName}-tfstate-${AWS::AccountId}-${AWS::Region}"
+      VersioningConfiguration: {Status: Enabled}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: {SSEAlgorithm: AES256}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  StateBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref StateBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: "*"
+            Action: "s3:*"
+            Resource: [!GetAtt StateBucket.Arn, !Sub "${StateBucket.Arn}/*"]
+            Condition: {Bool: {"aws:SecureTransport": "false"}}
+
+  # Every role Terraform creates must carry this boundary. Even if a Terraform
+  # change (or a compromised workflow) wrote an admin policy onto a Lambda role,
+  # the role could never do more than this.
+  LambdaBoundary:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub "${ProjectName}-lambda-boundary"
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: Logs
+            Effect: Allow
+            Action: [logs:CreateLogStream, logs:PutLogEvents, logs:FilterLogEvents]
+            Resource: !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*"
+          - Sid: Parameters
+            Effect: Allow
+            Action: [ssm:GetParameter]
+            Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/${ProjectName}/*"
+          - Sid: State
+            Effect: Allow
+            Action: [dynamodb:GetItem, dynamodb:PutItem, dynamodb:UpdateItem]
+            Resource: !Sub "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-*"
+          - Sid: ReadOnlyObservability
+            Effect: Allow
+            Action: [cloudwatch:PutMetricData, cloudwatch:GetMetricStatistics, cloudtrail:LookupEvents]
+            Resource: "*"
+
+  DeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      # Deliberately NOT prefixed with ProjectName: the deploy role may manage
+      # "${ProjectName}-*" roles, and must not be able to modify itself.
+      RoleName: !Sub "github-deploy-${ProjectName}"
+      MaxSessionDuration: 3600
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !If
+                - MakeOidc
+                - !Ref GitHubOidcProvider
+                - !Sub "arn:aws:iam::${AWS::AccountId}:oidc-provider/token.actions.githubusercontent.com"
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                # Only jobs that run in these GitHub environments of this repository.
+                token.actions.githubusercontent.com:sub:
+                  - !Sub "repo:${GitHubOwner}/${RepoName}:environment:aws"
+                  - !Sub "repo:${GitHubOwner}/${RepoName}:environment:aws-ops"
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess # everything except IAM / Organizations / Account
+      Policies:
+        - PolicyName: manage-project-roles
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CreateRolesOnlyWithBoundary
+                Effect: Allow
+                Action: [iam:CreateRole, iam:PutRolePolicy, iam:PutRolePermissionsBoundary]
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-*"
+                Condition:
+                  StringEquals:
+                    iam:PermissionsBoundary: !Ref LambdaBoundary
+              - Sid: ManageProjectRoles
+                Effect: Allow
+                Action:
+                  - iam:GetRole
+                  - iam:DeleteRole
+                  - iam:TagRole
+                  - iam:UntagRole
+                  - iam:UpdateRole
+                  - iam:UpdateAssumeRolePolicy
+                  - iam:GetRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:ListRolePolicies
+                  - iam:ListAttachedRolePolicies
+                  - iam:ListInstanceProfilesForRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-*"
+              - Sid: PassProjectRolesToLambda
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/${ProjectName}-*"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+              - Sid: NoBoundaryRemoval
+                Effect: Deny
+                Action: [iam:DeleteRolePermissionsBoundary]
+                Resource: "*"
+
+Outputs:
+  DeployRoleArn:
+    Description: GitHub variable AWS_ROLE_ARN
+    Value: !GetAtt DeployRole.Arn
+  StateBucketName:
+    Description: GitHub variable TF_STATE_BUCKET
+    Value: !Ref StateBucket
+  PermissionsBoundaryName:
+    Description: Terraform variable permissions_boundary_name
+    Value: !Sub "${ProjectName}-lambda-boundary"

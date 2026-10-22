@@ -1,0 +1,35 @@
+name: ci
+
+# Pull requests only; pushes to main run the same tests in deploy.yml.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
+      - run: python scripts/validate_config.py checks.yaml
+      - run: cfn-lint bootstrap/github-oidc.yaml
+      - run: actionlint .github/workflows/*.yml
+
+  terraform:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - run: terraform fmt -check -recursive
+      - run: terraform init -backend=false -input=false
+      - run: terraform validate
+      - run: terraform test # plan-only, mocked providers: no AWS credentials needed
