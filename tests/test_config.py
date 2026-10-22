@@ -8,14 +8,18 @@ from watchkeeper.config import ConfigError, parse_checks
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def test_example_file_is_valid():
-    assert parse_checks(yaml.safe_load((ROOT / "checks.yaml").read_text())) == []
+MARKER = "# --- More examples"
+
+
+def test_checks_file_is_valid():
+    checks = parse_checks(yaml.safe_load((ROOT / "checks.yaml").read_text()))
+    assert all(c.name.startswith("tutorhub-") for c in checks)
 
 
 def test_commented_examples_are_valid():
     """The examples in checks.yaml must stay correct when a user uncomments them."""
     text = (ROOT / "checks.yaml").read_text()
-    examples = text.split("checks: []", 1)[1]
+    examples = text.split(MARKER, 1)[1].split("\n", 1)[1]
     # Example lines are indented as "#  - name: ..."; section headers ("# ---") stay comments.
     uncommented = "\n".join(line[1:] if line.startswith("#  ") else line for line in examples.splitlines())
     checks = parse_checks(yaml.safe_load("checks:\n" + uncommented))
