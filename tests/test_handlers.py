@@ -184,3 +184,13 @@ class TestSlowChecks:
         for results in (stale, failing):
             due, reused = checker.split_due(self.checks(), results.get, now=1600 if results is failing else 4000)
             assert {c.name for c in due} == {"key", "web"} and reused == []
+
+
+def test_demo_app_logs_failures(monkeypatch, caplog):
+    import logging
+    from handlers import demo_app
+
+    monkeypatch.setattr(demo_app, "_fault_mode", lambda: "error")
+    with caplog.at_level(logging.INFO):
+        assert demo_app.handler({"rawPath": "/health"}, None)["statusCode"] == 500
+    assert "fault_mode=error" in caplog.text

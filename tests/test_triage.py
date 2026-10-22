@@ -312,3 +312,22 @@ def test_evaluation_harness_runs_with_any_llm(monkeypatch):
     )
     assert [r["passed"] for r in rows] == [True, True]
     evaluate.summarize(rows)
+
+
+def test_event_target_reads_names_not_values():
+    import json as _json
+    from watchkeeper.triage.aws_backend import event_target
+
+    event = {
+        "Resources": [],
+        "EventSource": "ssm.amazonaws.com",
+        "CloudTrailEvent": _json.dumps({"requestParameters": {
+            "name": "/watchkeeper/demo/fault_mode", "value": "error", "overwrite": True}}),
+    }
+    assert event_target(event) == "/watchkeeper/demo/fault_mode"
+    assert "error" not in event_target(event)
+
+    lam = {"Resources": [{"ResourceName": "watchkeeper-demo-app"}],
+           "CloudTrailEvent": _json.dumps({"requestParameters": {"functionName": "watchkeeper-demo-app"}})}
+    assert event_target(lam) == "watchkeeper-demo-app"
+    assert event_target({"EventSource": "iam.amazonaws.com", "CloudTrailEvent": "not json"}) == "iam.amazonaws.com"

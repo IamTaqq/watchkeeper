@@ -12,6 +12,7 @@ Set the fault mode with SSM (see `make fault MODE=...`):
 from __future__ import annotations
 
 import json
+import logging
 import os
 import time
 from datetime import datetime, timezone
@@ -19,6 +20,9 @@ from datetime import datetime, timezone
 from watchkeeper import aws
 
 SLOW_SECONDS = 12
+
+log = logging.getLogger()
+log.setLevel(logging.INFO)
 
 
 def _json(status: int, body: dict) -> dict:
@@ -48,4 +52,12 @@ def respond(path: str, mode: str, now: float) -> dict:
 
 
 def handler(event, context):
-    return respond(event.get("rawPath") or "/", _fault_mode(), time.time())
+    path = event.get("rawPath") or "/"
+    mode = _fault_mode()
+    response = respond(path, mode, time.time())
+    if response["statusCode"] >= 500:
+        # A real app would log its errors; this gives the triage agent something to find.
+        log.error("request failed path=%s status=%s fault_mode=%s", path, response["statusCode"], mode)
+    elif mode != "none":
+        log.warning("serving with demo fault active path=%s fault_mode=%s", path, mode)
+    return response

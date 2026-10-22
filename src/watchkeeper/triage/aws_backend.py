@@ -15,6 +15,25 @@ from watchkeeper import aws
 # CloudTrail events that are noise for "what changed?"
 IGNORED_EVENTS = {"AssumeRole", "ConsoleLogin", "GetSessionToken", "StartQuery", "CreateLogStream"}
 
+# Request fields that name what was changed. Only names are read: values
+# (e.g. a PutParameter value) are never copied out of the event.
+TARGET_FIELDS = ("name", "functionName", "ruleName", "tableName", "topicArn", "bucketName")
+
+
+def event_target(event: dict) -> str:
+    """Best-effort name of the changed resource for one CloudTrail event."""
+    names = [r.get("ResourceName", "") for r in event.get("Resources", []) if r.get("ResourceName")]
+    try:
+        params = json.loads(event.get("CloudTrailEvent") or "{}").get("requestParameters") or {}
+    except (TypeError, ValueError):
+        params = {}
+    if isinstance(params, dict):
+        for field in TARGET_FIELDS:
+            value = params.get(field)
+            if isinstance(value, str) and value and value not in names:
+                names.append(value)
+    return ", ".join(names) or event.get("EventSource", "")
+
 
 class AwsBackend:
     def __init__(self, namespace: str, log_sources: dict[str, str], schedules: list[str]):
@@ -105,7 +124,7 @@ class AwsBackend:
                 "t": e["EventTime"].timestamp(),
                 "actor": e.get("Username", "unknown"),
                 "action": e.get("EventName"),
-                "target": ", ".join(r.get("ResourceName", "") for r in e.get("Resources", [])) or e.get("EventSource", ""),
+                "target": event_target(e),
                 "details": e.get("EventSource", ""),
             })
         return sorted(changes, key=lambda c: c["t"])
