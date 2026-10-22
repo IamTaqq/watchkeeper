@@ -5,3 +5,4 @@ boto3>=1.34
 moto[dynamodb,ssm,cloudwatch,logs,cloudtrail]>=5
 cfn-lint>=1
 actionlint-py>=1.7
+shellcheck-py>=0.10

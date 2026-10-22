@@ -20,9 +20,17 @@ Parameters:
     AllowedValues: ["true", "false"]
     Default: "true"
     Description: Set to false if this account already has the token.actions.githubusercontent.com provider.
+  EnableGitHubDeploy:
+    Type: String
+    AllowedValues: ["true", "false"]
+    Default: "true"
+    Description: >
+      false = deploy from CloudShell only (no OIDC provider, no deploy role). Use this where
+      account guardrails forbid OIDC providers. The state bucket and boundary are still created.
 
 Conditions:
-  MakeOidc: !Equals [!Ref CreateOidcProvider, "true"]
+  GitHubDeploy: !Equals [!Ref EnableGitHubDeploy, "true"]
+  MakeOidc: !And [!Condition GitHubDeploy, !Equals [!Ref CreateOidcProvider, "true"]]
 
 Resources:
   GitHubOidcProvider:
@@ -91,6 +99,7 @@ Resources:
 
   DeployRole:
     Type: AWS::IAM::Role
+    Condition: GitHubDeploy
     Properties:
       # Deliberately NOT prefixed with ProjectName: the deploy role may manage
       # "${ProjectName}-*" roles, and must not be able to modify itself.
@@ -156,6 +165,7 @@ Resources:
 
 Outputs:
   DeployRoleArn:
+    Condition: GitHubDeploy
     Description: GitHub variable AWS_ROLE_ARN
     Value: !GetAtt DeployRole.Arn
   StateBucketName:

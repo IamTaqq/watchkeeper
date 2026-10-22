@@ -1,5 +1,8 @@
 # AWSへのデプロイ(GitHub Actions経由)
 
+> **組織のルールでOIDCプロバイダが作れないアカウント**(使えるリージョンや機能が制限されたアカウント)では、
+> この方法は使えません。代わりに [deploy-cloudshell-ja.md](deploy-cloudshell-ja.md) の、CloudShellから直接デプロイする方法を使ってください。
+
 コードの変更とデプロイは、**GitHubにpushすると自動で行われる**仕組みにしています。
 AWSのアクセスキーはどこにも保存しません。GitHub ActionsがOIDCという仕組みで、その都度、短時間だけ有効な権限を受け取ります。
 
@@ -30,14 +33,14 @@ AWSコンソール右上のリージョンを **カナダ (中部) ca-central-1*
 
 ```bash
 # リポジトリが Public の場合
-curl -fsSLO https://raw.githubusercontent.com/IamTaqq/watchkeeper/main/bootstrap/github-oidc.yaml
+curl -fsSLO https://raw.githubusercontent.com/IamTaqq/watchkeeper/main/bootstrap/bootstrap.yaml
 
-# Private の場合: GitHubから bootstrap/github-oidc.yaml をダウンロードし、
+# Private の場合: GitHubから bootstrap/bootstrap.yaml をダウンロードし、
 # CloudShell の「アクション → ファイルのアップロード」で上げる
 
 aws cloudformation deploy \
   --stack-name watchkeeper-bootstrap \
-  --template-file github-oidc.yaml \
+  --template-file bootstrap.yaml \
   --capabilities CAPABILITY_NAMED_IAM
 
 aws cloudformation describe-stacks --stack-name watchkeeper-bootstrap \

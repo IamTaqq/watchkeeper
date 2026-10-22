@@ -18,8 +18,9 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
       - run: python scripts/validate_config.py checks.yaml
-      - run: cfn-lint bootstrap/github-oidc.yaml
+      - run: cfn-lint bootstrap/bootstrap.yaml
       - run: actionlint .github/workflows/*.yml
+      - run: shellcheck scripts/*.sh
 
   terraform:
     runs-on: ubuntu-latest

@@ -33,12 +33,12 @@ build: ## Assemble the Lambda package in build/lambda
 	find build/lambda -name '__pycache__' -prune -exec rm -rf {} +
 
 lint: ## Lint the bootstrap template and GitHub workflows
-	$(VENV)/bin/cfn-lint bootstrap/github-oidc.yaml
+	$(VENV)/bin/cfn-lint bootstrap/bootstrap.yaml
 	$(VENV)/bin/actionlint .github/workflows/*.yml
 
 bootstrap: ## One-time AWS setup (OIDC role, state bucket, boundary). Usually run in CloudShell instead.
 	aws cloudformation deploy --region $(REGION) --stack-name $(PROJECT)-bootstrap \
-		--template-file bootstrap/github-oidc.yaml --capabilities CAPABILITY_NAMED_IAM \
+		--template-file bootstrap/bootstrap.yaml --capabilities CAPABILITY_NAMED_IAM \
 		--parameter-overrides GitHubOwner=$(OWNER) RepoName=$(PROJECT) ProjectName=$(PROJECT)
 	aws cloudformation describe-stacks --region $(REGION) --stack-name $(PROJECT)-bootstrap \
 		--query 'Stacks[0].Outputs[].[OutputKey,OutputValue]' --output table

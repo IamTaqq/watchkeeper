@@ -61,11 +61,14 @@ flowchart LR
 Pushing to `main` runs tests, `terraform plan` and `apply` ([deploy.yml](.github/workflows/deploy.yml)).
 No AWS keys exist anywhere: the workflow assumes a role through GitHub OIDC, and the role trusts only
 this repository's `aws` / `aws-ops` environments (the `aws` environment can require a human approval per deploy).
-A one-time CloudFormation stack ([bootstrap/github-oidc.yaml](bootstrap/github-oidc.yaml)) creates the
+A one-time CloudFormation stack ([bootstrap/bootstrap.yaml](bootstrap/bootstrap.yaml)) creates the
 OIDC provider, the deploy role, the S3 state bucket and a **permissions boundary** that every role Terraform
 creates must carry, so even a bad Terraform change cannot grant a Lambda more than the boundary allows.
 Drills (break the demo app, pause the cron, send a test alert) run from [ops.yml](.github/workflows/ops.yml),
 leaving an audit trail. Guide (Japanese): [docs/deploy-ja.md](docs/deploy-ja.md)
+
+Where account guardrails forbid OIDC providers, [scripts/cloudshell.sh](scripts/cloudshell.sh) deploys from AWS CloudShell
+with the signed-in session instead (still no keys; plan, then explicit `yes`). Guide: [docs/deploy-cloudshell-ja.md](docs/deploy-cloudshell-ja.md)
 
 ## Quick start (local)
 
