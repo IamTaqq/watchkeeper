@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from watchkeeper.config import ConfigError, parse_checks  # noqa: E402
 
-DEMO_NAMES = {"demo-app-health", "demo-data-freshness", "demo-cron"}
+DEMO_NAMES = {"demo-app-health", "demo-data-freshness", "demo-cron", "ai-triage-api-key"}
 
 path = Path(sys.argv[1] if len(sys.argv) > 1 else "checks.yaml")
 try:

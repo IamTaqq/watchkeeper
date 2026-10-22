@@ -158,3 +158,29 @@ class TestNotifierHandler:
         notifier, posted = env
         monkeypatch.setattr(notifier.aws, "get_parameter", lambda name, ttl_seconds=60: "REPLACE_ME")
         assert notifier.handler(self.sns(alarm_message()), None) == {"sent": 0}
+
+
+class TestSlowChecks:
+    def checks(self):
+        from watchkeeper.config import parse_checks
+
+        return parse_checks({"checks": [
+            {"name": "key", "type": "anthropic_api_key", "check_every_seconds": 3600},
+            {"name": "web", "type": "http", "url": "https://x.io"},
+        ]})
+
+    def test_fresh_passing_result_is_reused(self):
+        results = {"key": {"ok": True, "message": "API key accepted", "checked_at": 1000}}
+        due, reused = checker.split_due(self.checks(), results.get, now=1000 + 600)
+        assert [c.name for c in due] == ["web"]
+        assert reused[0].ok and reused[0].cached
+        # Reused results still report CheckSuccess (no gaps for the alarm) but no fake latency.
+        names = {d["MetricName"] for d in checker.metric_data(reused)}
+        assert names == {"CheckSuccess"}
+
+    def test_stale_or_failing_results_run_again(self):
+        stale = {"key": {"ok": True, "message": "", "checked_at": 0}}
+        failing = {"key": {"ok": False, "message": "rejected", "checked_at": 1000}}
+        for results in (stale, failing):
+            due, reused = checker.split_due(self.checks(), results.get, now=1600 if results is failing else 4000)
+            assert {c.name for c in due} == {"key", "web"} and reused == []

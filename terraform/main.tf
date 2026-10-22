@@ -40,9 +40,23 @@ locals {
   ]
   demo_checks = [for c in local.demo_definitions : c if var.enable_demo]
 
-  all_checks = concat(local.user_checks, local.demo_checks)
+  # Watch the watcher: when AI triage is on, verify its API key hourly (free call),
+  # so an expired key is reported before the next incident needs it.
+  triage_definitions = [
+    {
+      name                = "ai-triage-api-key"
+      type                = "anthropic_api_key"
+      description         = "AI triage API key is still accepted"
+      key_parameter       = var.anthropic_api_key_parameter
+      check_every_seconds = 3600
+      failure_threshold   = 2
+    },
+  ]
+  triage_checks = [for c in local.triage_definitions : c if var.enable_triage]
 
-  supported_types = ["http", "heartbeat", "http_json_freshness", "postgres"]
+  all_checks = concat(local.user_checks, local.demo_checks, local.triage_checks)
+
+  supported_types = ["http", "heartbeat", "http_json_freshness", "postgres", "anthropic_api_key"]
 
   # Only names and thresholds are needed to build alarms; keep the map type uniform.
   # Grouping (...) tolerates duplicate names here so the precondition on
@@ -56,7 +70,12 @@ locals {
 
   boundary_arn = var.permissions_boundary_name == "" ? null : "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.permissions_boundary_name}"
 
+  # SSM parameters the checker may read for checks that need a secret.
   postgres_dsn_parameters = distinct([for c in local.all_checks : try(c.dsn_parameter, "") if try(c.type, "") == "postgres"])
+  check_secret_parameters = distinct(concat(
+    local.postgres_dsn_parameters,
+    [for c in local.all_checks : try(c.key_parameter, "/watchkeeper/anthropic_api_key") if try(c.type, "") == "anthropic_api_key"],
+  ))
 }
 
 # --- Shared state ----------------------------------------------------------------
@@ -93,7 +112,7 @@ resource "aws_ssm_parameter" "config" {
     }
     precondition {
       condition     = alltrue([for c in local.all_checks : contains(local.supported_types, try(c.type, ""))])
-      error_message = "Every check needs a type: http, heartbeat, http_json_freshness or postgres. Run `make validate` for details."
+      error_message = "Every check needs a type: http, heartbeat, http_json_freshness, postgres or anthropic_api_key. Run `make validate` for details."
     }
   }
 }

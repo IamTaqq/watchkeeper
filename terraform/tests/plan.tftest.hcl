@@ -154,6 +154,14 @@ run "triage_enabled" {
     condition     = aws_dynamodb_table.state.ttl[0].enabled
     error_message = "triage claims rely on TTL"
   }
+  assert {
+    condition     = contains(keys(aws_cloudwatch_metric_alarm.check), "ai-triage-api-key")
+    error_message = "triage should add a check that its API key still works"
+  }
+  assert {
+    condition     = contains(local.check_secret_parameters, "/watchkeeper/anthropic_api_key")
+    error_message = "the checker must be allowed to read the API key for that check"
+  }
 }
 
 run "triage_off_by_default" {
@@ -162,7 +170,7 @@ run "triage_off_by_default" {
     checks_file = "./tests/fixtures/two_checks.yaml"
   }
   assert {
-    condition     = length(module.triage) == 0
-    error_message = "triage must be opt-in"
+    condition     = length(module.triage) == 0 && !contains(keys(aws_cloudwatch_metric_alarm.check), "ai-triage-api-key")
+    error_message = "triage (and its key check) must be opt-in"
   }
 }

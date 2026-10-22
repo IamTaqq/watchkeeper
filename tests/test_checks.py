@@ -131,3 +131,37 @@ def test_long_messages_are_truncated(world):
     world.responses[URL] = ValueError("x" * 2000)
     result = run_check(one(name="web", type="http", url=URL), world.context())
     assert len(result.message) == 500 and result.message.endswith("...")
+
+
+class TestAnthropicKey:
+    URL = "https://api.anthropic.com/v1/models?limit=1"
+
+    def check(self):
+        return one(name="ai-key", type="anthropic_api_key", key_parameter="/x/key")
+
+    def test_accepted_key_passes_and_is_sent_as_header(self, world):
+        world.secrets["/x/key"] = "sk-ant-test"
+        world.responses[self.URL] = ok_response()
+        result = run_check(self.check(), world.context())
+        assert result.ok and world.last_headers["x-api-key"] == "sk-ant-test"
+        assert "sk-ant-test" not in result.message
+
+    @pytest.mark.parametrize("status", [401, 403])
+    def test_rejected_key_fails_with_next_step(self, world, status):
+        world.secrets["/x/key"] = "sk-ant-old"
+        world.responses[self.URL] = ok_response(status=status)
+        result = run_check(self.check(), world.context())
+        assert not result.ok and "/x/key" in result.message and "sk-ant-old" not in result.message
+
+    @pytest.mark.parametrize("status", [429, 500, 529])
+    def test_api_trouble_does_not_blame_the_key(self, world, status):
+        world.secrets["/x/key"] = "sk-ant-test"
+        world.responses[self.URL] = ok_response(status=status)
+        result = run_check(self.check(), world.context())
+        assert result.ok and "not verified" in result.message
+
+
+def test_check_every_seconds_is_validated():
+    with pytest.raises(Exception, match="zero or a positive integer"):
+        one(name="a", type="anthropic_api_key", check_every_seconds=-1)
+    assert one(name="a", type="anthropic_api_key").check_every_seconds == 0

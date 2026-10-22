@@ -17,7 +17,7 @@ data "aws_iam_policy_document" "checker" {
   statement {
     sid       = "ReadConfigAndDsns"
     actions   = ["ssm:GetParameter"]
-    resources = concat([aws_ssm_parameter.config.arn], [for p in local.postgres_dsn_parameters : "${local.param_arn}${p}"])
+    resources = concat([aws_ssm_parameter.config.arn], [for p in local.check_secret_parameters : "${local.param_arn}${p}"])
   }
   statement {
     sid       = "State"

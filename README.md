@@ -118,6 +118,7 @@ Agent guardrails:
 - Hard step limit; the final turn forces a structured `submit_report`
 - Proposed actions are validated against live allowed values (e.g. a rollback target must be a known good deploy); anything else is downgraded to escalation
 - One investigation per check per cooldown window, so alarm storms cannot run up a bill
+- The monitor watches itself: with triage on, an `anthropic_api_key` check verifies hourly (free metadata call) that the agent's API key is still accepted, so an expired key alerts before the next incident needs it
 - Tool outputs are compressed (runs of identical results/log lines) to keep token usage low
 
 ## Defining checks

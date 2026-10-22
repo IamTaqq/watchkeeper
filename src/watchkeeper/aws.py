@@ -60,8 +60,8 @@ def load_checks() -> list[Check]:
     return parse_checks(json.loads(get_parameter(os.environ["CONFIG_PARAMETER"])))
 
 
-def http_get(url: str, timeout: int) -> HttpResponse:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
+def http_get(url: str, timeout: int, headers: Optional[dict] = None) -> HttpResponse:
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, **(headers or {})})
     started = time.monotonic()
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 - URLs come from trusted config

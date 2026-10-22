@@ -29,6 +29,8 @@ class Check:
     params: dict[str, Any] = field(default_factory=dict)
     failure_threshold: int = DEFAULT_FAILURE_THRESHOLD
     description: str = ""
+    # Re-run at most this often; in between, the last result is reused (0 = every run).
+    check_every_seconds: int = 0
 
 
 def _require(raw: dict, key: str, name: str) -> Any:
@@ -40,6 +42,12 @@ def _require(raw: dict, key: str, name: str) -> Any:
 def _positive_int(value: Any, key: str, name: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ConfigError(f"check '{name}': '{key}' must be a positive integer")
+    return value
+
+
+def _non_negative_int(value: Any, key: str, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ConfigError(f"check '{name}': '{key}' must be zero or a positive integer")
     return value
 
 
@@ -98,11 +106,19 @@ def _postgres(raw: dict, name: str) -> dict:
     }
 
 
+def _anthropic_key(raw: dict, name: str) -> dict:
+    key_parameter = str(raw.get("key_parameter", "/watchkeeper/anthropic_api_key"))
+    if not key_parameter.startswith("/"):
+        raise ConfigError(f"check '{name}': 'key_parameter' must be an SSM name starting with '/'")
+    return {"key_parameter": key_parameter, "timeout_seconds": _timeout(raw, name)}
+
+
 PARSERS = {
     "http": _http,
     "heartbeat": _heartbeat,
     "http_json_freshness": _freshness,
     "postgres": _postgres,
+    "anthropic_api_key": _anthropic_key,
 }
 
 
@@ -143,6 +159,7 @@ def parse_checks(raw: Any) -> list[Check]:
                     item.get("failure_threshold", DEFAULT_FAILURE_THRESHOLD), "failure_threshold", name
                 ),
                 description=str(item.get("description", "")),
+                check_every_seconds=_non_negative_int(item.get("check_every_seconds", 0), "check_every_seconds", name),
             )
         )
     return checks

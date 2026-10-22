@@ -19,7 +19,8 @@ class FakeWorld:
         self.sql_value = 0
         self.sql_calls = []
 
-    def http_get(self, url, timeout):
+    def http_get(self, url, timeout, headers=None):
+        self.last_headers = headers
         resp = self.responses.get(url)
         if isinstance(resp, Exception):
             raise resp

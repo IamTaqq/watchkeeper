@@ -31,13 +31,14 @@ class CheckResult:
     ok: bool
     message: str
     latency_ms: float = 0.0
+    cached: bool = False  # reused from an earlier run (see Check.check_every_seconds)
 
 
 @dataclass
 class Context:
     """Side-effecting dependencies, injected so tests can replace them."""
 
-    http_get: Callable[[str, int], HttpResponse]
+    http_get: Callable[..., HttpResponse]  # (url, timeout, headers=None)
     now: Callable[[], float]
     get_heartbeat: Callable[[str], Optional[dict]]
     register_heartbeat: Callable[[str, float], None]
@@ -140,11 +141,36 @@ def check_postgres(check: Check, ctx: Context) -> CheckResult:
     return CheckResult(check.name, True, f"query returned {value}", latency)
 
 
+ANTHROPIC_MODELS_URL = "https://api.anthropic.com/v1/models?limit=1"
+
+
+def check_anthropic_key(check: Check, ctx: Context) -> CheckResult:
+    """Is the AI triage agent's API key still accepted? Uses a free metadata call."""
+    p = check.params
+    key = ctx.get_secret(p["key_parameter"])
+    resp = ctx.http_get(
+        ANTHROPIC_MODELS_URL, p["timeout_seconds"], headers={"x-api-key": key, "anthropic-version": "2023-06-01"}
+    )
+    if resp.status in (401, 403):
+        return CheckResult(
+            check.name,
+            False,
+            f"API key rejected (HTTP {resp.status}): it may have expired or been revoked. "
+            f"AI triage cannot run until a new key is stored in {p['key_parameter']}.",
+            resp.elapsed_ms,
+        )
+    if resp.status != 200:
+        # Rate limits or an API outage say nothing about the key itself.
+        return CheckResult(check.name, True, f"key not verified: Claude API returned HTTP {resp.status}", resp.elapsed_ms)
+    return CheckResult(check.name, True, "API key accepted", resp.elapsed_ms)
+
+
 EVALUATORS = {
     "http": check_http,
     "heartbeat": check_heartbeat,
     "http_json_freshness": check_freshness,
     "postgres": check_postgres,
+    "anthropic_api_key": check_anthropic_key,
 }
 
 
