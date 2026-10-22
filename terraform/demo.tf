@@ -43,23 +43,7 @@ resource "aws_lambda_function_url" "demo_app" {
   authorization_type = "NONE"
 }
 
-resource "aws_lambda_permission" "demo_app_url" {
-  count                  = var.enable_demo ? 1 : 0
-  statement_id           = "FunctionURLAllowPublicAccess"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = module.demo_app[0].name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
 
-resource "aws_lambda_permission" "demo_app_url_invoke" {
-  count                    = var.enable_demo ? 1 : 0
-  statement_id             = "FunctionURLInvokeAllowPublicAccess"
-  action                   = "lambda:InvokeFunction"
-  function_name            = module.demo_app[0].name
-  principal                = "*"
-  invoked_via_function_url = true
-}
 
 data "aws_iam_policy_document" "demo_cron" {
   count = var.enable_demo ? 1 : 0

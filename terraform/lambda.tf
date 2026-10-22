@@ -104,26 +104,15 @@ module "heartbeat" {
   }
 }
 
+# With authorization_type = "NONE" the AWS provider (6.28+) adds both public-access
+# permissions (InvokeFunctionUrl, and InvokeFunction via function URL) itself.
+# Declaring them separately as well races that call and fails with HTTP 409.
 resource "aws_lambda_function_url" "heartbeat" {
   function_name      = module.heartbeat.name
   authorization_type = "NONE" # the handler checks a bearer token itself
 }
 
-resource "aws_lambda_permission" "heartbeat_url" {
-  statement_id           = "FunctionURLAllowPublicAccess"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = module.heartbeat.name
-  principal              = "*"
-  function_url_auth_type = "NONE"
-}
 
-resource "aws_lambda_permission" "heartbeat_url_invoke" {
-  statement_id             = "FunctionURLInvokeAllowPublicAccess"
-  action                   = "lambda:InvokeFunction"
-  function_name            = module.heartbeat.name
-  principal                = "*"
-  invoked_via_function_url = true
-}
 
 # --- notifier: alarm state changes -> Slack -------------------------------------------
 
